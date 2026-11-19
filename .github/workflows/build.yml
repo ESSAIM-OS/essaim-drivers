@@ -1,0 +1,87 @@
+name: Drivers
+
+on:
+  workflow_dispatch:
+    inputs:
+      rebuild:
+        description: "Also rebuild already-published versions"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["*.txt", "*.sh", "*.py", "*.asc", ".github/workflows/build.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: drivers
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      nvidia: ${{ steps.plan.outputs.nvidia }}
+      rocm: ${{ steps.plan.outputs.rocm }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REBUILD: ${{ inputs.rebuild && 'true' || 'false' }}
+        run: python3 plan.py | tee -a "$GITHUB_OUTPUT"
+
+  nvidia:
+    needs: plan
+    if: needs.plan.outputs.nvidia != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        version: ${{ fromJSON(needs.plan.outputs.nvidia) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build kernel modules
+        run: |
+          mkdir -p out
+          docker run --rm -v "$PWD:/drv:ro" -v "$PWD/out:/out" debian:trixie sh /drv/nvidia-modules.sh "${{ matrix.version }}" /out
+      - name: Resolve NVIDIA packages and test offline install
+        run: docker run --rm -v "$PWD:/drv:ro" -v "$PWD/out:/out" debian:trixie sh /drv/nvidia-test.sh "${{ matrix.version }}" /out
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sudo chown -R "$(id -u)" out && python3 publish.py upload nvidia "${{ matrix.version }}" out
+
+  rocm:
+    needs: plan
+    if: needs.plan.outputs.rocm != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        version: ${{ fromJSON(needs.plan.outputs.rocm) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve ROCm packages and test offline install
+        run: |
+          mkdir -p out
+          docker run --rm -v "$PWD:/drv:ro" -v "$PWD/out:/out" debian:trixie sh /drv/rocm-test.sh "${{ matrix.version }}" /out
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sudo chown -R "$(id -u)" out && python3 publish.py upload rocm "${{ matrix.version }}" out
+
+  manifest:
+    needs: [plan, nvidia, rocm]
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 manifest.py --github

@@ -1,0 +1,7 @@
+# Available NVIDIA driver versions (Debian 13 CUDA repo), sorted oldest to newest.
+# The last line is the version preinstalled in the worker image and must remain here for rollback.
+590.48.01
+595.112.07
+610.57.04
+615.71.10
+620.70.06

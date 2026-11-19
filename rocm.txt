@@ -1,0 +1,4 @@
+# Available AMD OpenCL versions (ROCm, AMD Ubuntu 24.04 repo), sorted oldest to newest.
+6.4.4
+7.1.1
+7.2.4

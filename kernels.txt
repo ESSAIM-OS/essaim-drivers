@@ -1,0 +1,5 @@
+# Kernels included in published Essaim OS images: NVIDIA modules are compiled once per kernel and driver version.
+# `python deploy/nx_drivers.py add-kernel` appends the kernel of a new image.
+6.12.115+deb13.1-amd64
+6.12.116+deb13-amd64
+6.12.117+deb13-amd64
